@@ -17,6 +17,13 @@ permissions:
 jobs:
   post:
     runs-on: ubuntu-latest
+    # The ON/OFF switch: a repository VARIABLE (not secret) named
+    # POSTING_ENABLED. Set it to "false" to pause the daily automatic
+    # post — the whole job is skipped (shows as "skipped" in the Actions
+    # tab, not a failure). Manually running via "Run workflow" always
+    # works regardless of this switch, so you can still test/post on
+    # demand while it's paused. Unset/anything else = posting stays on.
+    if: github.event_name != 'schedule' || vars.POSTING_ENABLED != 'false'
     steps:
       - name: Check out repo
         uses: actions/checkout@v4
@@ -47,6 +54,8 @@ jobs:
           git diff --quiet --cached || git commit -m "Prepare picture-bot reel $(date -u +'%Y-%m-%d')"
           git push
 
+      # A short pause so raw.githubusercontent.com has a moment to reflect
+      # the file that was just pushed, before Instagram tries to fetch it.
       - name: Wait for raw GitHub URL to propagate
         run: sleep 15
 
