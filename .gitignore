@@ -1,0 +1,4 @@
+__pycache__/
+*.pyc
+.tmp_clip_source.mp4
+.tmp_audio_raw.mp3
