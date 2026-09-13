@@ -96,24 +96,29 @@ def render_quote_reel(source_video_path, quote, author, audio_path, out_path,
 
     line_height = int(font_size * 1.45)
     block_height = line_height * len(lines) + 70
-    box_top = f"(h-{block_height})/2-40"
 
     src_duration = get_video_duration(source_video_path)
     # Pick a start offset so we're not always using the exact first frame
     # (helps avoid intro logos/fades some stock clips have).
     start_offset = min(1.5, max(src_duration - duration, 0))
 
+    # No drawbox behind the text anymore — that hard-edged rectangle was
+    # the "black patch" showing up on every reel. Legibility now comes
+    # from a slightly stronger frame-wide dim (eq=brightness) plus a
+    # black outline + shadow directly on the letters (like subtitle
+    # text), so there's no separate dark box sitting on the footage.
     vf = (
         f"scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},"
-        f"eq=brightness=-0.05,"
-        f"drawbox=x={margin - 50}:y={box_top}:w={w - 2 * (margin - 50)}:h={block_height}:"
-        f"color=black@0.38:t=fill,"
+        f"eq=brightness=-0.08,"
         f"drawtext=textfile={quote_txt_path}:fontfile={font_path}:fontsize={font_size}:"
         f"fontcolor=white:line_spacing=14:x=(w-text_w)/2:y=(h-text_h)/2-40:"
-        f"shadowcolor=black@0.6:shadowx=2:shadowy=2,"
+        f"bordercolor=black@0.75:borderw=3:"
+        f"shadowcolor=black@0.7:shadowx=2:shadowy=2,"
         f"drawtext=textfile={author_txt_path}:fontfile={italic_path}:fontsize=34:"
         f"fontcolor=0xEBEBEB:x=(w-text_w)/2:y=(h/2)+{block_height // 2 - 70}:"
-        f"shadowcolor=black@0.6:shadowx=1:shadowy=1"
+        f"bordercolor=black@0.75:borderw=2:"
+        f"shadowcolor=black@0.7:shadowx=1:shadowy=1,"
+        f"{common.build_watermark_drawtext_filter()}"
     )
 
     cmd = [
@@ -165,7 +170,7 @@ def cmd_prepare():
             "real footage."
         )
 
-    track = common.fetch_openverse_track(CLIP_DURATION)
+    track = common.fetch_openverse_track(CLIP_DURATION, category)
     audio_path = None
     if track:
         audio_path = os.path.join(day_dir, "audio.mp3")
