@@ -48,13 +48,12 @@ def cover_crop(img, size):
     return img.crop((left, top, left + target_w, top + target_h))
 
 
-def draw_letter_spaced(draw, xy, text, font, fill, spacing=3):
-    widths = [draw.textlength(ch, font=font) for ch in text]
-    total_width = sum(widths) + spacing * (len(text) - 1)
-    x = xy[0] - total_width / 2
-    for ch, cw in zip(text, widths):
-        draw.text((x, xy[1]), ch, font=font, fill=fill)
-        x += cw + spacing
+def draw_text_with_shadow(draw, xy, text, font, fill, shadow_fill=(0, 0, 0, 200), offset=3):
+    """Drop-shadow instead of a background box — keeps text readable on
+    any photo without a hard-edged dark rectangle behind it."""
+    x, y = xy
+    draw.text((x + offset, y + offset), text, font=font, fill=shadow_fill)
+    draw.text((x, y), text, font=font, fill=fill)
 
 
 NATURE_GRADIENTS = [
@@ -119,7 +118,6 @@ def render_quote_image(quote, author, category, out_path):
     line_height = int(quote_font_size * 1.45)
     total_text_height = line_height * len(lines)
     author_font = common.get_font("italic", 34)
-    handle_font = common.get_font("regular", 26)
 
     author_text = f"— {author}"
     author_gap = 34
@@ -127,28 +125,23 @@ def render_quote_image(quote, author, category, out_path):
     block_height = total_text_height + author_gap + author_height
     y = (h - block_height) / 2
 
-    pad_x, pad_y = 60, 50
-    scrim = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-    scrim_draw = ImageDraw.Draw(scrim)
-    scrim_draw.rounded_rectangle(
-        [margin - pad_x, y - pad_y, w - margin + pad_x, y + block_height + pad_y],
-        radius=28,
-        fill=(0, 0, 0, 90),
-    )
-    img = Image.alpha_composite(img, scrim)
-    draw = ImageDraw.Draw(img)
-
+    # No background box behind the text — a drop shadow keeps it readable
+    # on any photo without leaving a hard-edged dark patch on the frame.
     for line in lines:
         line_width = draw.textlength(line, font=quote_font)
         x = (w - line_width) / 2
-        draw.text((x, y), line, font=quote_font, fill="white")
+        draw_text_with_shadow(draw, (x, y), line, quote_font, "white")
         y += line_height
 
     author_width = draw.textlength(author_text, font=author_font)
-    draw.text(((w - author_width) / 2, y + author_gap), author_text, font=author_font, fill=(235, 235, 235))
+    draw_text_with_shadow(
+        draw, ((w - author_width) / 2, y + author_gap), author_text, author_font, (235, 235, 235)
+    )
 
-    handle_text = f"@{common.IG_HANDLE}"
-    draw_letter_spaced(draw, (w / 2, h - 100), handle_text, handle_font, (255, 255, 255, 230), spacing=3)
+    # Note: the "fragmentfiles" watermark is stamped onto the final video
+    # in render_ken_burns_reel() instead of here — that way it stays
+    # fixed at the bottom of the frame instead of drifting/getting
+    # cropped as the Ken Burns zoom moves in.
 
     img.convert("RGB").save(out_path, "JPEG", quality=92)
     return out_path
@@ -169,7 +162,8 @@ def render_ken_burns_reel(still_image_path, audio_path, out_path, duration=REEL_
         f"[0:v]scale=-2:{h * 2},"
         f"zoompan=z='{zoom_expr}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
         f"d={frames}:s={w}x{h}:fps={fps},"
-        f"format=yuv420p[v]"
+        f"format=yuv420p,"
+        f"{common.build_watermark_drawtext_filter()}[v]"
     )
 
     cmd = [
@@ -213,7 +207,7 @@ def cmd_prepare():
     render_quote_image(quote, author, category, still_path)
     print(f"[info] Still image rendered at {still_path}")
 
-    track = common.fetch_openverse_track(REEL_DURATION)
+    track = common.fetch_openverse_track(REEL_DURATION, category)
     audio_path = None
     if track:
         audio_path = os.path.join(day_dir, "audio.mp3")
