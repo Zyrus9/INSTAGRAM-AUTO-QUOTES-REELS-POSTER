@@ -28,7 +28,7 @@ from PIL import Image, ImageDraw, ImageFont
 IG_ACCESS_TOKEN = os.environ.get("IG_ACCESS_TOKEN", "")
 IG_USER_ID = os.environ.get("IG_USER_ID", "")
 PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY", "")
-IG_HANDLE = os.environ.get("IG_HANDLE", "fragmentfiles")
+IG_HANDLE = os.environ.get("IG_HANDLE") or "fragmentfiles"
 DRY_RUN = os.environ.get("DRY_RUN", "false").lower() == "true"
 
 GITHUB_REPOSITORY = os.environ.get("GITHUB_REPOSITORY", "")  # "owner/repo", auto-set in Actions
@@ -259,6 +259,29 @@ def get_font(style, size):
 
 
 # --------------------------------------------------------------------------
+# Watermark — stamped onto the final rendered video (after any zoom/crop)
+# so it always sits in the same fixed spot on screen, on both bots.
+# --------------------------------------------------------------------------
+
+def _escape_drawtext_literal(text):
+    return text.replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
+
+
+def build_watermark_drawtext_filter():
+    """Returns an ffmpeg drawtext filter chunk (no leading/trailing comma)
+    that stamps the IG_HANDLE watermark near the bottom-center of the
+    frame. Apply this LAST in a filter chain, after any scale/zoom/crop,
+    so the watermark's screen position never shifts or gets cropped."""
+    font_path = get_font_path("regular") or SYSTEM_FONT_FALLBACKS["regular"]
+    watermark_text = _escape_drawtext_literal(IG_HANDLE)
+    return (
+        f"drawtext=text='{watermark_text}':fontfile={font_path}:fontsize=30:"
+        f"fontcolor=white@0.85:x=(w-text_w)/2:y=h-80:"
+        f"shadowcolor=black@0.6:shadowx=1:shadowy=1"
+    )
+
+
+# --------------------------------------------------------------------------
 # Pexels: photos + videos
 # --------------------------------------------------------------------------
 
@@ -357,6 +380,18 @@ MOOD_QUERIES = [
     "gentle ambient instrumental",
 ]
 
+# Per-category mood queries, so the track actually matches what's on
+# screen (ocean-ish for beach/sea, birdsong-ish for birds, etc.) instead
+# of a generic ambient pick every time. Falls back to MOOD_QUERIES above
+# if a category has no matches on a given day.
+CATEGORY_MOOD_QUERIES = {
+    "mountains": ["epic calm ambient", "mountain ambient calm", "peaceful piano meditation", "gentle ambient instrumental"],
+    "forest": ["forest ambient calm", "soft acoustic calm", "gentle ambient instrumental", "calm ambient nature"],
+    "birds": ["birdsong ambient", "gentle acoustic morning", "peaceful piano meditation", "calm ambient nature"],
+    "beach": ["ocean waves ambient", "tropical chill ambient", "relaxing ambient chill", "calm ambient nature"],
+    "sea": ["ocean waves ambient", "calm ambient nature", "relaxing ambient chill", "soft acoustic calm"],
+}
+
 # Only licenses with no NC (non-commercial) or SA/ND (share-alike / no-
 # derivatives) restriction — since we trim the track and post it as part
 # of a commercial Instagram account. cc0/pdm need no credit; "by" does
@@ -364,53 +399,65 @@ MOOD_QUERIES = [
 SAFE_LICENSES = {"cc0", "pdm", "by"}
 
 
-def fetch_openverse_track(duration_needed):
+def fetch_openverse_track(duration_needed, category=None):
     """Finds a calm/ambient CC0, Public-Domain, or plain-Attribution
     track via Openverse, downloads the audio, and returns a dict:
     {name, artist_name, license, needs_credit, local_path}. Returns None
     if nothing suitable is found — callers must handle a silent (no-
-    audio) reel gracefully in that case."""
-    try:
-        resp = requests.get(
-            f"{OPENVERSE_BASE}/audio/",
-            params={
-                "q": random.choice(MOOD_QUERIES),
-                "license": ",".join(sorted(SAFE_LICENSES)),
-                "category": "music",
-                "page_size": 20,
-            },
-            headers={"User-Agent": "igauto-bot/1.0 (instagram nature-quote reel bot)"},
-            timeout=15,
-        )
-        resp.raise_for_status()
-        results = resp.json().get("results", [])
-        needed_ms = duration_needed * 1000
-        candidates = [t for t in results if (t.get("duration") or 0) >= needed_ms]
-        if not candidates:
-            candidates = results
-        if not candidates:
-            print("[warn] No Openverse tracks matched; reel will have no background music.")
-            return None
-        track = random.choice(candidates)
-        audio_url = track.get("url")
-        if not audio_url:
-            return None
-        audio_resp = requests.get(audio_url, timeout=30)
-        audio_resp.raise_for_status()
-        raw_path = os.path.join(REPO_ROOT, ".tmp_audio_raw.mp3")
-        with open(raw_path, "wb") as f:
-            f.write(audio_resp.content)
-        license_slug = (track.get("license") or "").lower()
-        return {
-            "name": track.get("title") or "Untitled",
-            "artist_name": track.get("creator") or "Unknown Artist",
-            "license": license_slug,
-            "needs_credit": license_slug not in ("cc0", "pdm"),
-            "local_path": raw_path,
-        }
-    except Exception as exc:
-        print(f"[warn] Openverse fetch failed ({exc}); reel will have no background music.")
-        return None
+    audio) reel gracefully in that case.
+
+    If `category` is given (one of NATURE_CATEGORIES' keys), tries a
+    handful of mood queries themed to that category first — so a beach
+    clip is more likely to get an ocean-ish track instead of generic
+    piano — before falling back to the generic mood pool."""
+    queries_to_try = list(CATEGORY_MOOD_QUERIES.get(category, [])) if category else []
+    remaining_generic = [q for q in MOOD_QUERIES if q not in queries_to_try]
+    random.shuffle(remaining_generic)
+    queries_to_try += remaining_generic
+    needed_ms = duration_needed * 1000
+
+    for query in queries_to_try[:4]:
+        try:
+            resp = requests.get(
+                f"{OPENVERSE_BASE}/audio/",
+                params={
+                    "q": query,
+                    "license": ",".join(sorted(SAFE_LICENSES)),
+                    "category": "music",
+                    "page_size": 20,
+                },
+                headers={"User-Agent": "igauto-bot/1.0 (instagram nature-quote reel bot)"},
+                timeout=15,
+            )
+            resp.raise_for_status()
+            results = resp.json().get("results", [])
+            candidates = [t for t in results if (t.get("duration") or 0) >= needed_ms]
+            if not candidates:
+                candidates = results
+            if not candidates:
+                continue
+            track = random.choice(candidates)
+            audio_url = track.get("url")
+            if not audio_url:
+                continue
+            audio_resp = requests.get(audio_url, timeout=30)
+            audio_resp.raise_for_status()
+            raw_path = os.path.join(REPO_ROOT, ".tmp_audio_raw.mp3")
+            with open(raw_path, "wb") as f:
+                f.write(audio_resp.content)
+            license_slug = (track.get("license") or "").lower()
+            return {
+                "name": track.get("title") or "Untitled",
+                "artist_name": track.get("creator") or "Unknown Artist",
+                "license": license_slug,
+                "needs_credit": license_slug not in ("cc0", "pdm"),
+                "local_path": raw_path,
+            }
+        except Exception as exc:
+            print(f"[warn] Openverse fetch failed for query {query!r} ({exc}); trying next mood.")
+            continue
+    print("[warn] No Openverse tracks matched; reel will have no background music.")
+    return None
 
 
 def prepare_audio_clip(input_path, duration, out_path):
