@@ -448,36 +448,51 @@ SAFE_LICENSES = {"cc0", "pdm", "by"}
 _openverse_token_cache = {"token": None}
 
 
-def _get_openverse_bearer_token():
+def _get_openverse_bearer_token(max_attempts=3):
     """Exchanges OPENVERSE_CLIENT_ID/SECRET for a short-lived bearer
     token. Cached for the life of this process (each `prepare` run is a
     fresh process, so no expiry/refresh handling is needed beyond
-    that). Returns None if no credentials are configured, or if the
-    exchange fails — callers fall back to an anonymous request in that
-    case, which may itself fail if anonymous access is being throttled
-    or filtered."""
+    that). Returns None if no credentials are configured, or if every
+    attempt fails.
+
+    Retries a few times with a longer timeout and short backoff: a
+    single slow/timed-out attempt used to fall back to an anonymous
+    request immediately, but Openverse now returns a hard 401 for
+    anonymous audio searches (it's not just rate-limiting them), so a
+    one-off network blip on the token call used to mean the whole
+    day's reel came out silent. Retrying here is cheap (this only runs
+    once per `prepare` invocation) and turns a transient timeout into
+    a non-issue instead of a silent-audio day."""
     if _openverse_token_cache["token"]:
         return _openverse_token_cache["token"]
     if not (OPENVERSE_CLIENT_ID and OPENVERSE_CLIENT_SECRET):
         return None
-    try:
-        resp = requests.post(
-            f"{OPENVERSE_BASE}/auth_tokens/token/",
-            data={
-                "client_id": OPENVERSE_CLIENT_ID,
-                "client_secret": OPENVERSE_CLIENT_SECRET,
-                "grant_type": "client_credentials",
-            },
-            headers={"User-Agent": "igauto-bot/1.0 (instagram nature-quote reel bot)"},
-            timeout=15,
-        )
-        resp.raise_for_status()
-        token = resp.json().get("access_token")
-        _openverse_token_cache["token"] = token
-        return token
-    except Exception as exc:
-        print(f"[warn] Could not get an Openverse access token ({exc}); trying anonymous instead.")
-        return None
+    last_exc = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            resp = requests.post(
+                f"{OPENVERSE_BASE}/auth_tokens/token/",
+                data={
+                    "client_id": OPENVERSE_CLIENT_ID,
+                    "client_secret": OPENVERSE_CLIENT_SECRET,
+                    "grant_type": "client_credentials",
+                },
+                headers={"User-Agent": "igauto-bot/1.0 (instagram nature-quote reel bot)"},
+                timeout=30,
+            )
+            resp.raise_for_status()
+            token = resp.json().get("access_token")
+            _openverse_token_cache["token"] = token
+            return token
+        except Exception as exc:
+            last_exc = exc
+            print(f"[warn] Openverse token request failed on attempt {attempt}/{max_attempts} ({exc}).")
+            if attempt < max_attempts:
+                time.sleep(3 * attempt)
+    print(f"[warn] Could not get an Openverse access token after {max_attempts} attempts "
+          f"({last_exc}); trying anonymous instead (may fail — Openverse now rejects "
+          f"anonymous audio search outright).")
+    return None
 
 
 def _openverse_track_identifier(track):
