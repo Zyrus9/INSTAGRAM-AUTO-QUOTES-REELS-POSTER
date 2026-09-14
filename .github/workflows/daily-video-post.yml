@@ -21,7 +21,7 @@ jobs:
     # Same switch as the picture bot — set the repo variable
     # POSTING_ENABLED to "false" to pause daily auto-posting. Manual
     # "Run workflow" runs always go through regardless of the switch.
-    if: github.event_name != 'schedule' || vars.POSTING_ENABLED != 'false'
+    if: github.event_name != 'schedule' || vars.VIDEO_POSTING_ENABLED != 'false'
     steps:
       - name: Check out repo
         uses: actions/checkout@v4
