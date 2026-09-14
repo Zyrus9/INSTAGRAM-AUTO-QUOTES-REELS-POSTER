@@ -23,7 +23,7 @@ jobs:
     # tab, not a failure). Manually running via "Run workflow" always
     # works regardless of this switch, so you can still test/post on
     # demand while it's paused. Unset/anything else = posting stays on.
-    if: github.event_name != 'schedule' || vars.POSTING_ENABLED != 'false'
+    if: github.event_name != 'schedule' || vars.QUOTE_POSTING_ENABLED != 'false'
     steps:
       - name: Check out repo
         uses: actions/checkout@v4
