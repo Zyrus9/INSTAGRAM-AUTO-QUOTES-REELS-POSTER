@@ -391,6 +391,15 @@ def fetch_nature_video(category, min_duration=6, max_duration=40):
 # --------------------------------------------------------------------------
 
 OPENVERSE_BASE = "https://api.openverse.org/v1"
+
+# Two DIFFERENT wordings of the same "calm nature" vibe — one for the
+# picture bot, one for the video bot (mirrors FALLBACK_QUOTES /
+# FALLBACK_QUOTES_ALT above). This is the real fix for both bots ending
+# up with the same track: they used to search for the identical phrases,
+# so if they ran anywhere close together they could easily land on the
+# same top result before either had a chance to record it as "used."
+# Searching for different words entirely makes that collision extremely
+# unlikely regardless of timing, on top of the used_history dedup below.
 MOOD_QUERIES = [
     "calm ambient nature",
     "peaceful piano meditation",
@@ -399,16 +408,35 @@ MOOD_QUERIES = [
     "gentle ambient instrumental",
 ]
 
+MOOD_QUERIES_ALT = [
+    "tranquil instrumental soundscape",
+    "serene ambient drone",
+    "mellow slow acoustic",
+    "soothing calm background",
+    "quiet nature instrumental",
+]
+
 # Per-category mood queries, so the track actually matches what's on
 # screen (ocean-ish for beach/sea, birdsong-ish for birds, etc.) instead
-# of a generic ambient pick every time. Falls back to MOOD_QUERIES above
-# if a category has no matches on a given day.
+# of a generic ambient pick every time. Falls back to the matching
+# MOOD_QUERIES(_ALT) pool above if a category has no matches on a given
+# day. CATEGORY_MOOD_QUERIES is used by the picture bot,
+# CATEGORY_MOOD_QUERIES_ALT by the video bot — same categories, worded
+# differently, for the same reason as the ALT mood pool above.
 CATEGORY_MOOD_QUERIES = {
     "mountains": ["epic calm ambient", "mountain ambient calm", "peaceful piano meditation", "gentle ambient instrumental"],
     "forest": ["forest ambient calm", "soft acoustic calm", "gentle ambient instrumental", "calm ambient nature"],
     "birds": ["birdsong ambient", "gentle acoustic morning", "peaceful piano meditation", "calm ambient nature"],
     "beach": ["ocean waves ambient", "tropical chill ambient", "relaxing ambient chill", "calm ambient nature"],
     "sea": ["ocean waves ambient", "calm ambient nature", "relaxing ambient chill", "soft acoustic calm"],
+}
+
+CATEGORY_MOOD_QUERIES_ALT = {
+    "mountains": ["tranquil highland instrumental", "serene peak drone", "mellow alpine ambient", "soothing mountain quiet"],
+    "forest": ["tranquil woodland instrumental", "serene forest drone", "mellow woods ambient", "soothing green quiet"],
+    "birds": ["serene morning birdsong", "tranquil dawn chorus", "mellow avian ambient", "soothing birds instrumental"],
+    "beach": ["tranquil shoreline instrumental", "serene tropical drone", "mellow coastal ambient", "soothing beach quiet"],
+    "sea": ["tranquil ocean instrumental", "serene tide drone", "mellow open water ambient", "soothing sea quiet"],
 }
 
 # Only licenses with no NC (non-commercial) or SA/ND (share-alike / no-
@@ -463,7 +491,7 @@ def _openverse_track_identifier(track):
     )
 
 
-def fetch_openverse_track(duration_needed, category=None):
+def fetch_openverse_track(duration_needed, category=None, alt=False):
     """Finds a calm/ambient CC0, Public-Domain, or plain-Attribution
     track via Openverse, downloads the audio, and returns a dict:
     {name, artist_name, license, needs_credit, local_path}. Returns None
@@ -477,9 +505,17 @@ def fetch_openverse_track(duration_needed, category=None):
     pool is tried (not just the first few), so a couple of empty/failed
     lookups on a given day don't leave the reel silent. Each result page
     is also filtered down to tracks not already used recently, so the
-    same track doesn't keep showing up post after post."""
-    queries_to_try = list(CATEGORY_MOOD_QUERIES.get(category, [])) if category else []
-    remaining_generic = [q for q in MOOD_QUERIES if q not in queries_to_try]
+    same track doesn't keep showing up post after post.
+
+    Pass `alt=True` (the video bot does this) to search with the ALT
+    query wording instead of the picture bot's — different words means
+    a different results list, so the two bots land on different tracks
+    even if they happen to run close together, before either has
+    recorded its pick in used_history.json."""
+    category_pool = CATEGORY_MOOD_QUERIES_ALT if alt else CATEGORY_MOOD_QUERIES
+    generic_pool = MOOD_QUERIES_ALT if alt else MOOD_QUERIES
+    queries_to_try = list(category_pool.get(category, [])) if category else []
+    remaining_generic = [q for q in generic_pool if q not in queries_to_try]
     random.shuffle(remaining_generic)
     queries_to_try += remaining_generic
     needed_ms = duration_needed * 1000
