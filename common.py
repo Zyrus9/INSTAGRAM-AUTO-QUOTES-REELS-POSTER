@@ -412,24 +412,39 @@ CATEGORY_MOOD_QUERIES = {
 SAFE_LICENSES = {"cc0", "pdm", "by"}
 
 
+def _openverse_track_identifier(track):
+    """A stable-ish key for a track, used for dedup history. Prefer
+    Openverse's own id; fall back to the audio URL, then title+creator,
+    so dedup still works even if a field is occasionally missing."""
+    return str(
+        track.get("id")
+        or track.get("url")
+        or f"{track.get('title')}|{track.get('creator')}"
+    )
+
+
 def fetch_openverse_track(duration_needed, category=None):
     """Finds a calm/ambient CC0, Public-Domain, or plain-Attribution
     track via Openverse, downloads the audio, and returns a dict:
     {name, artist_name, license, needs_credit, local_path}. Returns None
-    if nothing suitable is found — callers must handle a silent (no-
-    audio) reel gracefully in that case.
+    only if every mood query comes back completely empty (rare) —
+    callers must still handle a silent reel gracefully in that case.
 
-    If `category` is given (one of NATURE_CATEGORIES' keys), tries a
-    handful of mood queries themed to that category first — so a beach
-    clip is more likely to get an ocean-ish track instead of generic
-    piano — before falling back to the generic mood pool."""
+    If `category` is given (one of NATURE_CATEGORIES' keys), tries mood
+    queries themed to that category first — so a beach clip is more
+    likely to get an ocean-ish track instead of generic piano — before
+    falling back to the generic mood pool. Every query in the combined
+    pool is tried (not just the first few), so a couple of empty/failed
+    lookups on a given day don't leave the reel silent. Each result page
+    is also filtered down to tracks not already used recently, so the
+    same track doesn't keep showing up post after post."""
     queries_to_try = list(CATEGORY_MOOD_QUERIES.get(category, [])) if category else []
     remaining_generic = [q for q in MOOD_QUERIES if q not in queries_to_try]
     random.shuffle(remaining_generic)
     queries_to_try += remaining_generic
     needed_ms = duration_needed * 1000
 
-    for query in queries_to_try[:4]:
+    for query in queries_to_try:
         try:
             resp = requests.get(
                 f"{OPENVERSE_BASE}/audio/",
@@ -437,7 +452,7 @@ def fetch_openverse_track(duration_needed, category=None):
                     "q": query,
                     "license": ",".join(sorted(SAFE_LICENSES)),
                     "category": "music",
-                    "page_size": 20,
+                    "page_size": 40,
                 },
                 headers={"User-Agent": "igauto-bot/1.0 (instagram nature-quote reel bot)"},
                 timeout=15,
@@ -449,7 +464,12 @@ def fetch_openverse_track(duration_needed, category=None):
                 candidates = results
             if not candidates:
                 continue
-            track = random.choice(candidates)
+            # Prefer a track we haven't posted recently; only reuse one
+            # if literally every candidate on this page has already
+            # been used (still better than a silent reel).
+            unused = [t for t in candidates if not is_audio_used(_openverse_track_identifier(t))]
+            pool = unused if unused else candidates
+            track = random.choice(pool)
             audio_url = track.get("url")
             if not audio_url:
                 continue
@@ -458,6 +478,7 @@ def fetch_openverse_track(duration_needed, category=None):
             raw_path = os.path.join(REPO_ROOT, ".tmp_audio_raw.mp3")
             with open(raw_path, "wb") as f:
                 f.write(audio_resp.content)
+            mark_audio_used(_openverse_track_identifier(track))
             license_slug = (track.get("license") or "").lower()
             return {
                 "name": track.get("title") or "Untitled",
@@ -469,7 +490,7 @@ def fetch_openverse_track(duration_needed, category=None):
         except Exception as exc:
             print(f"[warn] Openverse fetch failed for query {query!r} ({exc}); trying next mood.")
             continue
-    print("[warn] No Openverse tracks matched; reel will have no background music.")
+    print("[warn] No Openverse tracks matched after trying every mood query; reel will have no background music.")
     return None
 
 
@@ -591,16 +612,22 @@ def load_record(subfolder, date_str):
 USED_HISTORY_PATH = os.path.join(POSTS_DIR, "used_history.json")
 _MAX_QUOTE_HISTORY = 200   # forget quotes older than this so the pool never drains
 _MAX_MEDIA_HISTORY = 500   # same for photo/video Pexels IDs
+_MAX_AUDIO_HISTORY = 120   # same idea for Openverse tracks — ~a couple months before repeats
 
 
 def _load_history():
+    h = {"quotes": [], "pexels_ids": [], "audio_tracks": []}
     if os.path.exists(USED_HISTORY_PATH):
         try:
             with open(USED_HISTORY_PATH) as f:
-                return json.load(f)
+                loaded = json.load(f)
+            h.update(loaded)
         except Exception:
             pass
-    return {"quotes": [], "pexels_ids": []}
+    # Old history files (from before audio dedup existed) won't have this
+    # key — make sure it's always present so callers can rely on it.
+    h.setdefault("audio_tracks", [])
+    return h
 
 
 def _save_history(h):
@@ -635,6 +662,20 @@ def mark_pexels_id_used(pexels_id):
 def is_pexels_id_used(pexels_id):
     h = _load_history()
     return str(pexels_id) in h["pexels_ids"]
+
+
+def mark_audio_used(track_identifier):
+    h = _load_history()
+    key = str(track_identifier)
+    if key not in h["audio_tracks"]:
+        h["audio_tracks"].append(key)
+    h["audio_tracks"] = h["audio_tracks"][-_MAX_AUDIO_HISTORY:]
+    _save_history(h)
+
+
+def is_audio_used(track_identifier):
+    h = _load_history()
+    return str(track_identifier) in h["audio_tracks"]
 
 
 def cleanup_temp_files():
