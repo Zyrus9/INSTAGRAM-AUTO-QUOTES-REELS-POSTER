@@ -72,35 +72,40 @@ FALLBACK_QUOTES_ALT = [
 ]
 
 
-def fetch_quote():
-    """Today's quote from ZenQuotes (free, no key). Falls back to a local
-    list if the API is unreachable or rate-limited."""
-    try:
-        resp = requests.get("https://zenquotes.io/api/today", timeout=10)
-        resp.raise_for_status()
-        data = resp.json()
-        if isinstance(data, list) and data:
-            return data[0]["q"].strip(), data[0]["a"].strip()
-    except Exception as exc:
-        print(f"[warn] ZenQuotes /today fetch failed ({exc}); using fallback quote.")
-    pick = random.choice(FALLBACK_QUOTES)
+def _fetch_fresh_quote(fallback_pool, max_attempts=6):
+    """Fetches a random quote from ZenQuotes /random that hasn't been
+    posted before (checked against used_history.json). Tries up to
+    max_attempts times before giving up and picking an unused fallback,
+    or as a last resort any fallback if all are exhausted."""
+    for attempt in range(max_attempts):
+        try:
+            resp = requests.get("https://zenquotes.io/api/random", timeout=10)
+            resp.raise_for_status()
+            data = resp.json()
+            if isinstance(data, list) and data:
+                q, a = data[0]["q"].strip(), data[0]["a"].strip()
+                if not is_quote_used(q):
+                    return q, a
+                print(f"[info] Quote already used, retrying ({attempt+1}/{max_attempts})...")
+        except Exception as exc:
+            print(f"[warn] ZenQuotes /random fetch failed ({exc}); trying fallback.")
+            break
+    # Try unused fallbacks first
+    unused = [p for p in fallback_pool if not is_quote_used(p["q"])]
+    pool = unused if unused else fallback_pool
+    pick = random.choice(pool)
     return pick["q"], pick["a"]
+
+
+def fetch_quote():
+    """Random unused quote for the picture/quote bot."""
+    return _fetch_fresh_quote(FALLBACK_QUOTES)
 
 
 def fetch_quote_alt():
-    """A different quote for the second bot, so both bots don't post the
-    identical quote on the same day. ZenQuotes' /random endpoint (free,
-    no key) with its own separate fallback list."""
-    try:
-        resp = requests.get("https://zenquotes.io/api/random", timeout=10)
-        resp.raise_for_status()
-        data = resp.json()
-        if isinstance(data, list) and data:
-            return data[0]["q"].strip(), data[0]["a"].strip()
-    except Exception as exc:
-        print(f"[warn] ZenQuotes /random fetch failed ({exc}); using fallback quote.")
-    pick = random.choice(FALLBACK_QUOTES_ALT)
-    return pick["q"], pick["a"]
+    """Random unused quote for the video bot (separate call so both bots
+    don't burn through retries on the same ZenQuotes session)."""
+    return _fetch_fresh_quote(FALLBACK_QUOTES_ALT)
 
 
 # --------------------------------------------------------------------------
@@ -305,12 +310,16 @@ def fetch_nature_photo(category):
             photos = resp.json().get("photos", [])
             if not photos:
                 continue
-            photo = random.choice(photos)
+            # Prefer photos not seen before; fall back to any if all used
+            unused = [p for p in photos if not is_pexels_id_used(p.get("id"))]
+            pool = unused if unused else photos
+            photo = random.choice(pool)
             src = photo.get("src", {}).get("large2x") or photo.get("src", {}).get("original")
             if not src:
                 continue
             img_resp = requests.get(src, timeout=20)
             img_resp.raise_for_status()
+            mark_pexels_id_used(photo.get("id"))
             return Image.open(io.BytesIO(img_resp.content)).convert("RGB")
         except Exception as exc:
             print(f"[warn] Pexels photo fetch failed for query {query!r}: {exc}")
@@ -342,7 +351,10 @@ def fetch_nature_video(category, min_duration=6, max_duration=40):
                 candidates = videos
             if not candidates:
                 continue
-            video = random.choice(candidates)
+            # Prefer videos not seen before; fall back to any if all used
+            unused = [v for v in candidates if not is_pexels_id_used(v.get("id"))]
+            pool = unused if unused else candidates
+            video = random.choice(pool)
             files = sorted(
                 [f for f in video.get("video_files", []) if f.get("width") and f.get("height")],
                 key=lambda f: f["width"] * f["height"],
@@ -357,6 +369,7 @@ def fetch_nature_video(category, min_duration=6, max_duration=40):
             tmp_path = os.path.join(REPO_ROOT, ".tmp_clip_source.mp4")
             with open(tmp_path, "wb") as f:
                 f.write(video_resp.content)
+            mark_pexels_id_used(video.get("id"))
             return tmp_path
         except Exception as exc:
             print(f"[warn] Pexels video fetch failed for query {query!r}: {exc}")
@@ -568,6 +581,60 @@ def load_record(subfolder, date_str):
     record_path = os.path.join(POSTS_DIR, subfolder, date_str, "record.json")
     with open(record_path) as f:
         return json.load(f)
+
+
+# --------------------------------------------------------------------------
+# Used-content history — persisted as posts/used_history.json in the repo
+# so the bot never repeats a quote or a photo/video across days.
+# --------------------------------------------------------------------------
+
+USED_HISTORY_PATH = os.path.join(POSTS_DIR, "used_history.json")
+_MAX_QUOTE_HISTORY = 200   # forget quotes older than this so the pool never drains
+_MAX_MEDIA_HISTORY = 500   # same for photo/video Pexels IDs
+
+
+def _load_history():
+    if os.path.exists(USED_HISTORY_PATH):
+        try:
+            with open(USED_HISTORY_PATH) as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {"quotes": [], "pexels_ids": []}
+
+
+def _save_history(h):
+    os.makedirs(POSTS_DIR, exist_ok=True)
+    with open(USED_HISTORY_PATH, "w") as f:
+        json.dump(h, f, indent=2)
+
+
+def mark_quote_used(quote_text):
+    h = _load_history()
+    key = quote_text.strip().lower()
+    if key not in h["quotes"]:
+        h["quotes"].append(key)
+    h["quotes"] = h["quotes"][-_MAX_QUOTE_HISTORY:]
+    _save_history(h)
+
+
+def is_quote_used(quote_text):
+    h = _load_history()
+    return quote_text.strip().lower() in h["quotes"]
+
+
+def mark_pexels_id_used(pexels_id):
+    h = _load_history()
+    pid = str(pexels_id)
+    if pid not in h["pexels_ids"]:
+        h["pexels_ids"].append(pid)
+    h["pexels_ids"] = h["pexels_ids"][-_MAX_MEDIA_HISTORY:]
+    _save_history(h)
+
+
+def is_pexels_id_used(pexels_id):
+    h = _load_history()
+    return str(pexels_id) in h["pexels_ids"]
 
 
 def cleanup_temp_files():
