@@ -153,6 +153,7 @@ def cmd_prepare():
     print(f"[info] Preparing video-bot reel for {today} (DRY_RUN={common.DRY_RUN})")
 
     quote, author = common.fetch_quote_alt()
+    common.mark_quote_used(quote)
     category = common.pick_nature_category()
     hashtags = common.build_hashtags(category, author)
 
