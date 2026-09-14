@@ -1,0 +1,35 @@
+name: Register Openverse App (one-time setup)
+
+# Run this ONCE, manually, to fix background music not showing up on
+# posts. It registers this project with the Openverse API and prints a
+# client_id/client_secret in this run's log — copy those two values
+# into Settings -> Secrets and variables -> Actions as OPENVERSE_CLIENT_ID
+# and OPENVERSE_CLIENT_SECRET, and the daily bots will pick them up
+# automatically. No code changes needed after that.
+
+on:
+  workflow_dispatch:
+    inputs:
+      email:
+        description: "Contact email for the Openverse app registration (any email works, e.g. yours)"
+        required: true
+
+jobs:
+  register:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Register app and print credentials
+        env:
+          OPENVERSE_CONTACT_EMAIL: ${{ inputs.email }}
+        run: python register_openverse_app.py
