@@ -439,6 +439,21 @@ CATEGORY_MOOD_QUERIES_ALT = {
     "sea": ["tranquil ocean instrumental", "serene tide drone", "mellow open water ambient", "soothing sea quiet"],
 }
 
+# Last-resort tier: short, plain, high-frequency terms that are very
+# likely to match *something* in Openverse's catalog, tried only after
+# every mood/category-specific query above comes back empty. Those
+# specific queries are 3-4 invented words (e.g. "mellow open water
+# ambient") and combined with the safe-license filter can genuinely
+# return zero results on a given day even though nothing is actually
+# broken — this tier trades some mood-matching precision for
+# guaranteeing a track gets found. Kept as single words / short pairs
+# on purpose (broad full-text matches, not exact-phrase). Two
+# different wordings for the same reason as the pools above: so the
+# two bots still land on different tracks if they both fall through
+# to this tier close together in time.
+BROAD_FALLBACK_QUERIES = ["ambient", "calm piano", "instrumental", "chill acoustic", "meditation"]
+BROAD_FALLBACK_QUERIES_ALT = ["chill", "soft piano", "acoustic", "relaxing instrumental", "peaceful"]
+
 # Only licenses with no NC (non-commercial) or SA/ND (share-alike / no-
 # derivatives) restriction — since we trim the track and post it as part
 # of a commercial Instagram account. cc0/pdm need no credit; "by" does
@@ -529,10 +544,12 @@ def fetch_openverse_track(duration_needed, category=None, alt=False):
     recorded its pick in used_history.json."""
     category_pool = CATEGORY_MOOD_QUERIES_ALT if alt else CATEGORY_MOOD_QUERIES
     generic_pool = MOOD_QUERIES_ALT if alt else MOOD_QUERIES
+    broad_pool = BROAD_FALLBACK_QUERIES_ALT if alt else BROAD_FALLBACK_QUERIES
     queries_to_try = list(category_pool.get(category, [])) if category else []
     remaining_generic = [q for q in generic_pool if q not in queries_to_try]
     random.shuffle(remaining_generic)
     queries_to_try += remaining_generic
+    queries_to_try += [q for q in broad_pool if q not in queries_to_try]
     needed_ms = duration_needed * 1000
 
     headers = {"User-Agent": "igauto-bot/1.0 (instagram nature-quote reel bot)"}
