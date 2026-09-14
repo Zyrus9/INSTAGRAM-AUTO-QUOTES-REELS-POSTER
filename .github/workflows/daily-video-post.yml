@@ -44,6 +44,8 @@ jobs:
           DRY_RUN: ${{ inputs.dry_run || 'false' }}
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
           IG_HANDLE: ${{ secrets.IG_HANDLE }}
+          OPENVERSE_CLIENT_ID: ${{ secrets.OPENVERSE_CLIENT_ID }}
+          OPENVERSE_CLIENT_SECRET: ${{ secrets.OPENVERSE_CLIENT_SECRET }}
         run: python bot_video.py prepare
 
       - name: Commit and push the generated reel
