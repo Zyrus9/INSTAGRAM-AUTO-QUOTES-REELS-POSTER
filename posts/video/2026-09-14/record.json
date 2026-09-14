@@ -1,8 +1,8 @@
 {
   "date": "2026-09-14",
-  "quote": "The greatest discovery of all time is that a person can change their future by merely changing their attitude.",
-  "author": "Oprah Winfrey",
-  "category": "birds",
+  "quote": "Think progress, not perfection.",
+  "author": "Ryan Holiday",
+  "category": "forest",
   "hashtags": [
     "quoteoftheday",
     "dailyquote",
@@ -10,12 +10,15 @@
     "calmvibes",
     "peacefulmind",
     "slowliving",
-    "birdsinflight",
-    "naturemoments",
-    "skyview",
-    "OprahWinfreyQuotes"
+    "forestbathing",
+    "intothewoods",
+    "naturetherapy",
+    "RyanHolidayQuotes"
   ],
-  "caption": "A gentle reminder for today \ud83c\udf3f\n\n\"The greatest discovery of all time is that a person can change their future by merely changing their attitude.\"\n\u2014 Oprah Winfrey\n\n#quoteoftheday #dailyquote #naturequotes #calmvibes #peacefulmind #slowliving #birdsinflight #naturemoments #skyview #OprahWinfreyQuotes",
-  "music": null,
+  "caption": "Save this for a day you need it. \ud83d\udccc\n\n\"Think progress, not perfection.\"\n\u2014 Ryan Holiday\n\n\ud83c\udfb5 \"DreamDance 32 [ambient]\" \u2014 Hardcore Scm (CC BY, via Openverse)\n\n#quoteoftheday #dailyquote #naturequotes #calmvibes #peacefulmind #slowliving #forestbathing #intothewoods #naturetherapy #RyanHolidayQuotes",
+  "music": {
+    "name": "DreamDance 32 [ambient]",
+    "artist_name": "Hardcore Scm"
+  },
   "dry_run": false
 }
