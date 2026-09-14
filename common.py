@@ -400,20 +400,28 @@ OPENVERSE_BASE = "https://api.openverse.org/v1"
 # same top result before either had a chance to record it as "used."
 # Searching for different words entirely makes that collision extremely
 # unlikely regardless of timing, on top of the used_history dedup below.
+#
+# Kept to 2 words per query on purpose — longer invented phrases (3-4
+# words) were tried before and reliably came back with zero results
+# once combined with the safe-license filter, even though nothing was
+# actually broken. Every word here is drawn from: calm, peaceful, soft,
+# soothing, serene, tranquil, ethereal, gentle, quiet, dreamy, tender.
 MOOD_QUERIES = [
-    "calm ambient nature",
-    "peaceful piano meditation",
-    "relaxing ambient chill",
-    "soft acoustic calm",
-    "gentle ambient instrumental",
+    "calm ambient",
+    "peaceful piano",
+    "soothing ambient",
+    "serene instrumental",
+    "gentle ambient",
+    "soft piano",
 ]
 
 MOOD_QUERIES_ALT = [
-    "tranquil instrumental soundscape",
-    "serene ambient drone",
-    "mellow slow acoustic",
-    "soothing calm background",
-    "quiet nature instrumental",
+    "tranquil ambient",
+    "dreamy piano",
+    "ethereal ambient",
+    "tender piano",
+    "quiet ambient",
+    "serene piano",
 ]
 
 # Per-category mood queries, so the track actually matches what's on
@@ -422,37 +430,35 @@ MOOD_QUERIES_ALT = [
 # MOOD_QUERIES(_ALT) pool above if a category has no matches on a given
 # day. CATEGORY_MOOD_QUERIES is used by the picture bot,
 # CATEGORY_MOOD_QUERIES_ALT by the video bot — same categories, worded
-# differently, for the same reason as the ALT mood pool above.
+# differently, for the same reason as the ALT mood pool above. Same
+# 2-word rule as above, for the same reason.
 CATEGORY_MOOD_QUERIES = {
-    "mountains": ["epic calm ambient", "mountain ambient calm", "peaceful piano meditation", "gentle ambient instrumental"],
-    "forest": ["forest ambient calm", "soft acoustic calm", "gentle ambient instrumental", "calm ambient nature"],
-    "birds": ["birdsong ambient", "gentle acoustic morning", "peaceful piano meditation", "calm ambient nature"],
-    "beach": ["ocean waves ambient", "tropical chill ambient", "relaxing ambient chill", "calm ambient nature"],
-    "sea": ["ocean waves ambient", "calm ambient nature", "relaxing ambient chill", "soft acoustic calm"],
+    "mountains": ["calm mountain", "peaceful highland", "soothing mountain", "serene peak"],
+    "forest": ["calm forest", "peaceful forest", "soothing woods", "gentle forest"],
+    "birds": ["calm birdsong", "peaceful birdsong", "soft birdsong", "gentle birds"],
+    "beach": ["calm ocean", "peaceful beach", "soothing waves", "serene shoreline"],
+    "sea": ["calm sea", "peaceful ocean", "serene sea", "soothing tide"],
 }
 
 CATEGORY_MOOD_QUERIES_ALT = {
-    "mountains": ["tranquil highland instrumental", "serene peak drone", "mellow alpine ambient", "soothing mountain quiet"],
-    "forest": ["tranquil woodland instrumental", "serene forest drone", "mellow woods ambient", "soothing green quiet"],
-    "birds": ["serene morning birdsong", "tranquil dawn chorus", "mellow avian ambient", "soothing birds instrumental"],
-    "beach": ["tranquil shoreline instrumental", "serene tropical drone", "mellow coastal ambient", "soothing beach quiet"],
-    "sea": ["tranquil ocean instrumental", "serene tide drone", "mellow open water ambient", "soothing sea quiet"],
+    "mountains": ["tranquil mountain", "dreamy highland", "ethereal peak", "tender highland"],
+    "forest": ["tranquil forest", "dreamy woods", "ethereal forest", "quiet woods"],
+    "birds": ["tranquil birdsong", "dreamy birds", "gentle dawn", "soft birds"],
+    "beach": ["tranquil shoreline", "dreamy beach", "ethereal coast", "soft shoreline"],
+    "sea": ["tranquil ocean", "dreamy sea", "ethereal water", "quiet sea"],
 }
 
-# Last-resort tier: short, plain, high-frequency terms that are very
+# Last-resort tier: single-word, high-frequency terms that are very
 # likely to match *something* in Openverse's catalog, tried only after
-# every mood/category-specific query above comes back empty. Those
-# specific queries are 3-4 invented words (e.g. "mellow open water
-# ambient") and combined with the safe-license filter can genuinely
-# return zero results on a given day even though nothing is actually
-# broken — this tier trades some mood-matching precision for
-# guaranteeing a track gets found. Kept as single words / short pairs
-# on purpose (broad full-text matches, not exact-phrase). Two
-# different wordings for the same reason as the pools above: so the
-# two bots still land on different tracks if they both fall through
-# to this tier close together in time.
-BROAD_FALLBACK_QUERIES = ["ambient", "calm piano", "instrumental", "chill acoustic", "meditation"]
-BROAD_FALLBACK_QUERIES_ALT = ["chill", "soft piano", "acoustic", "relaxing instrumental", "peaceful"]
+# every mood/category-specific query above comes back empty. This tier
+# trades mood-matching precision for guaranteeing a track gets found.
+# Still drawn from the same calm/nature vocabulary, just as single
+# words so the search is as broad as possible. Two different wordings
+# for the same reason as the pools above: so the two bots still land
+# on different tracks if they both fall through to this tier close
+# together in time.
+BROAD_FALLBACK_QUERIES = ["calm", "peaceful", "soothing", "serene", "gentle", "soft"]
+BROAD_FALLBACK_QUERIES_ALT = ["tranquil", "dreamy", "tender", "ethereal", "quiet", "mellow"]
 
 # Only licenses with no NC (non-commercial) or SA/ND (share-alike / no-
 # derivatives) restriction — since we trim the track and post it as part
