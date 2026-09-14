@@ -171,7 +171,7 @@ def cmd_prepare():
             "real footage."
         )
 
-    track = common.fetch_openverse_track(CLIP_DURATION, category)
+    track = common.fetch_openverse_track(CLIP_DURATION, category, alt=True)
     audio_path = None
     if track:
         audio_path = os.path.join(day_dir, "audio.mp3")
