@@ -18,9 +18,11 @@ permissions:
 jobs:
   post:
     runs-on: ubuntu-latest
-    # Same switch as the picture bot — set the repo variable
-    # POSTING_ENABLED to "false" to pause daily auto-posting. Manual
-    # "Run workflow" runs always go through regardless of the switch.
+    # The ON/OFF switch for THIS bot only: repository variable
+    # VIDEO_POSTING_ENABLED. Set it to "false" to pause this daily video
+    # post — manual "Run workflow" runs always go through regardless of
+    # the switch. The picture/quote bot has its own separate switch,
+    # QUOTE_POSTING_ENABLED, in daily-quote-post.yml.
     if: github.event_name != 'schedule' || vars.VIDEO_POSTING_ENABLED != 'false'
     steps:
       - name: Check out repo
@@ -48,7 +50,7 @@ jobs:
         run: |
           git config user.name "igauto-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add posts/video/ fonts/ || true
+          git add posts/video/ fonts/ posts/used_history.json || true
           git diff --quiet --cached || git commit -m "Prepare video-bot reel $(date -u +'%Y-%m-%d')"
           git push
 
