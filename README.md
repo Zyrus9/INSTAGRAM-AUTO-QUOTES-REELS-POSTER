@@ -7,12 +7,15 @@ Actions — your computer doesn't need to be on for either of them.
 1. Fetches a quote (ZenQuotes)
 2. Picks a random peaceful **nature** scene — mountains, forest, birds,
    beach, or sea — and pulls a real matching photo from Pexels
-3. Renders the quote over it (serif type, soft dark scrim, your
-   `@handle` watermark)
+3. Renders the quote over it (serif type, drop-shadowed text — no
+   background box)
 4. Animates that still photo into a slow Ken-Burns-style zoom (this is
    what turns it into a Reel instead of a static post)
-5. Adds royalty-free Creative Commons background music (via Openverse)
-6. Writes a real caption — not just the raw quote — and posts it as an
+5. Adds royalty-free Creative Commons background music (via Openverse),
+   picked to match the scene's mood (ocean-ish for beach/sea, birdsong-ish
+   for birds, etc.)
+6. Stamps the `fragmentfiles` watermark at a fixed spot at the bottom
+7. Writes a real caption — not just the raw quote — and posts it as an
    Instagram **Reel**
 
 ### 🎥 Video Bot (`bot_video.py`)
@@ -20,11 +23,64 @@ Actions — your computer doesn't need to be on for either of them.
    on the same day)
 2. Pulls a real, already-moving nature video clip from Pexels (same five
    categories as above)
-3. Overlays the quote as centered text with a soft scrim behind it —
-   same look as the picture bot, just on real footage instead of a
-   Ken-Burns pan
-4. Mutes the clip's original audio and replaces it with an Openverse track
-5. Posts it as an Instagram Reel with the same caption style
+3. Overlays the quote as centered text with a black outline + drop
+   shadow for legibility (no background box)
+4. Mutes the clip's original audio and replaces it with an Openverse
+   track picked to match the scene's mood
+5. Stamps the `fragmentfiles` watermark at a fixed spot at the bottom
+6. Posts it as an Instagram Reel with the same caption style
+
+## Recent changes
+
+- **Background music, hardened + deduped**: both bots already added
+  Openverse music to every reel, but if Openverse came up empty on the
+  first few mood queries it used to just give up and post silently.
+  Now every mood query in the pool is tried before giving up, so a
+  silent reel should be rare going forward. Music tracks are also
+  tracked in `posts/used_history.json` (same idea as quotes and
+  photos) so the same track won't repeat for a couple of months.
+- **Watermark**: both bots now stamp `fragmentfiles` at a fixed spot at
+  the bottom of every reel (baked into the video itself, after any
+  zoom/crop, so it never drifts or gets cropped). Change the text by
+  setting the `IG_HANDLE` secret to something else.
+- **Pause switches**: two separate repository *variables* —
+  `QUOTE_POSTING_ENABLED` and `VIDEO_POSTING_ENABLED` — each gate their
+  own bot's daily scheduled runs independently. See "Pausing/resuming
+  posting" below.
+- **Black patch removed**: the video bot used to draw a solid dark box
+  behind the quote text for readability — that's gone. Both bots now
+  rely on a drop shadow / black outline directly on the letters instead,
+  so there's no rectangle sitting on top of the footage.
+- **Better-matching music**: background tracks are now searched per
+  nature category (e.g. ocean-ish moods for beach/sea clips, birdsong-ish
+  for birds) instead of one generic "calm ambient" pool for everything.
+  It still depends on what Openverse actually has available that day, so
+  it won't always be a perfect nature-sound match, but it'll lean toward
+  the right vibe far more often than before.
+
+## Pausing/resuming posting (the ON/OFF switches)
+
+Each bot has its own independent switch, so you can pause one without
+touching the other.
+
+**Settings → Secrets and variables → Actions → Variables tab → New
+repository variable.**
+
+| Variable name | Controls | Value | Effect |
+|---|---|---|---|
+| `QUOTE_POSTING_ENABLED` | Picture/text-quote bot (`daily-quote-post.yml`) | `false` | Pauses this bot's daily scheduled posts |
+| `QUOTE_POSTING_ENABLED` | " | `true` (or delete the variable) | Resumes it |
+| `VIDEO_POSTING_ENABLED` | Video bot (`daily-video-post.yml`) | `false` | Pauses this bot's daily scheduled posts |
+| `VIDEO_POSTING_ENABLED` | " | `true` (or delete the variable) | Resumes it |
+
+When a bot's variable is set to `false`, its scheduled (cron) run shows
+as **skipped** in the Actions tab instead of running — nothing gets
+generated or posted for that bot. The other bot keeps running normally
+unless you've also set its own variable. Manually running a workflow via
+**Actions → [workflow name] → Run workflow** still works regardless of
+either switch, so you can always test or force a one-off post while
+paused.
+
 
 Both keep a record (quote + category + music + caption) under
 `posts/picture/YYYY-MM-DD/` and `posts/video/YYYY-MM-DD/`.
@@ -86,7 +142,7 @@ work needed either way.
 | `IG_ACCESS_TOKEN` | Your long-lived Instagram access token |
 | `IG_USER_ID` | Your Instagram business account ID |
 | `PEXELS_API_KEY` | From step 2 |
-| `IG_HANDLE` | *(optional)* your `@handle` for the watermark — defaults to `fragmentfiles` |
+| `IG_HANDLE` | *(optional)* watermark text stamped on every reel — defaults to `fragmentfiles` |
 
 (`GITHUB_REPOSITORY` / `GITHUB_REF_NAME` are provided automatically by
 Actions.)
@@ -147,8 +203,10 @@ Instagram login" page in your Meta app dashboard, and update the
   bots' photo and video search.
 - **Caption wording / hooks**: edit `CAPTION_HOOKS` and `build_caption()`
   in `common.py`.
-- **Music mood**: edit `MOOD_QUERIES` in `common.py`.
-- **Your watermark handle**: set the `IG_HANDLE` secret.
+- **Music mood**: edit `MOOD_QUERIES` (generic pool) or
+  `CATEGORY_MOOD_QUERIES` (per nature-category matching) in `common.py`.
+- **Your watermark text**: set the `IG_HANDLE` secret, or edit
+  `build_watermark_drawtext_filter()` in `common.py` for size/position.
 - **Reel length**: `REEL_DURATION` in `bot_picture.py`, `CLIP_DURATION`
   in `bot_video.py`.
 - **Ken Burns zoom speed**: the `0.15` in `zoom_expr` inside
