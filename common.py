@@ -31,6 +31,12 @@ PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY", "")
 IG_HANDLE = os.environ.get("IG_HANDLE") or "fragmentfiles"
 DRY_RUN = os.environ.get("DRY_RUN", "false").lower() == "true"
 
+# Optional but strongly recommended — see README "Openverse authentication"
+# section. Without these, Openverse calls go out anonymously, which has been
+# unreliable (rate-limited / bot-filtered) in practice.
+OPENVERSE_CLIENT_ID = os.environ.get("OPENVERSE_CLIENT_ID", "")
+OPENVERSE_CLIENT_SECRET = os.environ.get("OPENVERSE_CLIENT_SECRET", "")
+
 GITHUB_REPOSITORY = os.environ.get("GITHUB_REPOSITORY", "")  # "owner/repo", auto-set in Actions
 GITHUB_REF_NAME = os.environ.get("GITHUB_REF_NAME", "main")  # branch, auto-set in Actions
 
@@ -411,6 +417,40 @@ CATEGORY_MOOD_QUERIES = {
 # (handled in build_music_credit_line).
 SAFE_LICENSES = {"cc0", "pdm", "by"}
 
+_openverse_token_cache = {"token": None}
+
+
+def _get_openverse_bearer_token():
+    """Exchanges OPENVERSE_CLIENT_ID/SECRET for a short-lived bearer
+    token. Cached for the life of this process (each `prepare` run is a
+    fresh process, so no expiry/refresh handling is needed beyond
+    that). Returns None if no credentials are configured, or if the
+    exchange fails — callers fall back to an anonymous request in that
+    case, which may itself fail if anonymous access is being throttled
+    or filtered."""
+    if _openverse_token_cache["token"]:
+        return _openverse_token_cache["token"]
+    if not (OPENVERSE_CLIENT_ID and OPENVERSE_CLIENT_SECRET):
+        return None
+    try:
+        resp = requests.post(
+            f"{OPENVERSE_BASE}/auth_tokens/token/",
+            data={
+                "client_id": OPENVERSE_CLIENT_ID,
+                "client_secret": OPENVERSE_CLIENT_SECRET,
+                "grant_type": "client_credentials",
+            },
+            headers={"User-Agent": "igauto-bot/1.0 (instagram nature-quote reel bot)"},
+            timeout=15,
+        )
+        resp.raise_for_status()
+        token = resp.json().get("access_token")
+        _openverse_token_cache["token"] = token
+        return token
+    except Exception as exc:
+        print(f"[warn] Could not get an Openverse access token ({exc}); trying anonymous instead.")
+        return None
+
 
 def _openverse_track_identifier(track):
     """A stable-ish key for a track, used for dedup history. Prefer
@@ -444,6 +484,14 @@ def fetch_openverse_track(duration_needed, category=None):
     queries_to_try += remaining_generic
     needed_ms = duration_needed * 1000
 
+    headers = {"User-Agent": "igauto-bot/1.0 (instagram nature-quote reel bot)"}
+    token = _get_openverse_bearer_token()
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    else:
+        print("[warn] No OPENVERSE_CLIENT_ID/SECRET configured (or token exchange failed); "
+              "calling Openverse anonymously, which may be rate-limited or blocked.")
+
     for query in queries_to_try:
         try:
             resp = requests.get(
@@ -454,7 +502,7 @@ def fetch_openverse_track(duration_needed, category=None):
                     "category": "music",
                     "page_size": 40,
                 },
-                headers={"User-Agent": "igauto-bot/1.0 (instagram nature-quote reel bot)"},
+                headers=headers,
                 timeout=15,
             )
             resp.raise_for_status()
