@@ -509,6 +509,8 @@ def create_reels_container(video_url, caption):
         },
         timeout=30,
     )
+    if not resp.ok:
+        print(f"[error] Instagram container creation failed {resp.status_code}: {resp.text}")
     resp.raise_for_status()
     return resp.json()["id"]
 
