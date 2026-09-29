@@ -39,7 +39,7 @@ REEL_FPS = 30
 
 # Master on/off switch. Unset or empty = ON, so a missing variable can
 # never silently stop the bot. Set PICTURE_BOT_ENABLED=false to stop it.
-PICTURE_BOT_ENABLED = common.env_flag("PICTURE_BOT_ENABLED", default=True)
+PICTURE_BOT_ENABLED = common.env_flag("PICTURE_BOT_ENABLED", default=False)
 
 
 # --------------------------------------------------------------------------
