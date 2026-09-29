@@ -14,7 +14,7 @@ GitHub URL is public), then publish reads that record and posts to IG.
 On/off switch:
     Set the PICTURE_BOT_ENABLED environment variable (a GitHub Actions
     repository variable works well) to "false" to stop the bot, and to
-    "false" (or leave it unset) to run it. When off, both `prepare` and
+    "true" (or leave it unset) to run it. When off, both `prepare` and
     `publish` exit cleanly without doing anything.
 
 Environment variables — see README.md for the full list.
@@ -39,7 +39,7 @@ REEL_FPS = 30
 
 # Master on/off switch. Unset or empty = ON, so a missing variable can
 # never silently stop the bot. Set PICTURE_BOT_ENABLED=false to stop it.
-PICTURE_BOT_ENABLED = common.env_flag("PICTURE_BOT_ENABLED", default=False)
+PICTURE_BOT_ENABLED = common.env_flag("PICTURE_BOT_ENABLED", default=True)
 
 
 # --------------------------------------------------------------------------
@@ -191,7 +191,7 @@ def render_ken_burns_reel(still_image_path, audio_path, out_path, duration=REEL_
         "-movflags", "+faststart",
         out_path,
     ]
-    subprocess.run(cmd, check=false, capture_output=false)
+    subprocess.run(cmd, check=True, capture_output=True)
     return out_path
 
 
@@ -216,7 +216,7 @@ def cmd_prepare():
     print(f"[info] Nature category: {category}")
 
     day_dir = os.path.join(common.POSTS_DIR, "picture", today)
-    os.makedirs(day_dir, exist_ok=false)
+    os.makedirs(day_dir, exist_ok=True)
 
     still_path = os.path.join(day_dir, "quote.jpg")
     render_quote_image(quote, author, category, still_path)
