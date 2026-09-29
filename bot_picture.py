@@ -11,6 +11,12 @@ Two phases (see bottom of file), same pattern as before: prepare writes
 posts/picture/<date>/, the workflow commits + pushes it (so the raw
 GitHub URL is public), then publish reads that record and posts to IG.
 
+On/off switch:
+    Set the PICTURE_BOT_ENABLED environment variable (a GitHub Actions
+    repository variable works well) to "false" to stop the bot, and to
+    "true" (or leave it unset) to run it. When off, both `prepare` and
+    `publish` exit cleanly without doing anything.
+
 Environment variables — see README.md for the full list.
 
 Usage:
@@ -30,6 +36,10 @@ import common
 
 REEL_DURATION = 8  # seconds
 REEL_FPS = 30
+
+# Master on/off switch. Unset or empty = ON, so a missing variable can
+# never silently stop the bot. Set PICTURE_BOT_ENABLED=false to stop it.
+PICTURE_BOT_ENABLED = common.env_flag("PICTURE_BOT_ENABLED", default=True)
 
 
 # --------------------------------------------------------------------------
@@ -138,10 +148,10 @@ def render_quote_image(quote, author, category, out_path):
         draw, ((w - author_width) / 2, y + author_gap), author_text, author_font, (235, 235, 235)
     )
 
-    # Note: the "fragmentfiles" watermark is stamped onto the final video
-    # in render_ken_burns_reel() instead of here — that way it stays
-    # fixed at the bottom of the frame instead of drifting/getting
-    # cropped as the Ken Burns zoom moves in.
+    # Note: the IG_HANDLE watermark is stamped onto the final video in
+    # render_ken_burns_reel() instead of here — that way it stays fixed
+    # at the bottom of the frame instead of drifting/getting cropped as
+    # the Ken Burns zoom moves in.
 
     img.convert("RGB").save(out_path, "JPEG", quality=92)
     return out_path
@@ -190,6 +200,10 @@ def render_ken_burns_reel(still_image_path, audio_path, out_path, duration=REEL_
 # --------------------------------------------------------------------------
 
 def cmd_prepare():
+    if not PICTURE_BOT_ENABLED:
+        print("[info] Picture bot is switched OFF (PICTURE_BOT_ENABLED=false) — skipping prepare.")
+        return
+
     today = dt.date.today().isoformat()
     print(f"[info] Preparing picture-bot reel for {today} (DRY_RUN={common.DRY_RUN})")
 
@@ -232,7 +246,18 @@ def cmd_prepare():
 
 
 def cmd_publish():
+    if not PICTURE_BOT_ENABLED:
+        print("[info] Picture bot is switched OFF (PICTURE_BOT_ENABLED=false) — skipping publish.")
+        return
+
     today = dt.date.today().isoformat()
+
+    # If prepare was skipped or failed today, there's nothing to post.
+    # Exit cleanly instead of crashing on a missing record.json.
+    if not common.record_exists("picture", today):
+        print(f"[info] No record found for {today} (prepare didn't run or was skipped) — nothing to publish.")
+        return
+
     record = common.load_record("picture", today)
     caption = record["caption"]
 
