@@ -25,6 +25,20 @@ from PIL import Image, ImageDraw, ImageFont
 # Config / secrets (read from environment — set as GitHub Actions secrets)
 # --------------------------------------------------------------------------
 
+
+def env_flag(name, default=True):
+    """Reads a true/false switch from the environment.
+
+    An unset or empty value falls back to `default`, so a missing
+    variable never accidentally turns a bot off. Accepted "on" values:
+    1, true, yes, on (case-insensitive). Anything else counts as off.
+    """
+    val = os.environ.get(name, "").strip().lower()
+    if not val:
+        return default
+    return val in ("1", "true", "yes", "on")
+
+
 IG_ACCESS_TOKEN = os.environ.get("IG_ACCESS_TOKEN", "")
 IG_USER_ID = os.environ.get("IG_USER_ID", "")
 PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY", "")
@@ -618,7 +632,7 @@ def fetch_openverse_track(duration_needed, category=None, alt=False):
 
 def prepare_audio_clip(input_path, duration, out_path):
     """Trims/pads background music to exactly `duration` seconds with a
-    1s fade-in and fade-out, re-encoded as AAC-friendly stereo mp3."""
+    1.5s fade-in and fade-out, re-encoded as AAC-friendly stereo mp3."""
     fade_out_start = max(duration - 1.5, 0)
     cmd = [
         "ffmpeg", "-y", "-i", input_path,
@@ -718,6 +732,11 @@ def save_record(subfolder, date_str, record_updates, media_id=None):
     with open(record_path, "w") as f:
         json.dump(record, f, indent=2)
     return record
+
+
+def record_exists(subfolder, date_str):
+    """True if prepare has already written a record.json for that day."""
+    return os.path.exists(os.path.join(POSTS_DIR, subfolder, date_str, "record.json"))
 
 
 def load_record(subfolder, date_str):
